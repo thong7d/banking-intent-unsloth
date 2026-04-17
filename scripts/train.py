@@ -1,111 +1,109 @@
-import os
+import argparse
 import yaml
+import os
 import json
+import torch
 import pandas as pd
 from datasets import Dataset
 from unsloth import FastLanguageModel
-from unsloth.chat_templates import get_chat_template, train_on_responses_only
+from unsloth.chat_templates import get_chat_template
 from trl import SFTTrainer
-from transformers import TrainingArguments, DataCollatorForSeq2Seq
+from transformers import TrainingArguments
 
-def load_local_data(file_path):
-    """
-    Doc du lieu tu CSV va chuyen doi cot conversations tu chuoi JSON sang danh sach dict.
-    """
-    df = pd.read_csv(file_path)
-    df['conversations'] = df['conversations'].apply(json.loads)
-    return Dataset.from_pandas(df)
+def parse_args():
+    parser = argparse.ArgumentParser(description="Training Pipeline for Llama-3.1")
+    parser.add_argument("--config", type=str, required=True)
+    parser.add_argument("--output_dir", type=str, required=True)
+    return parser.parse_args()
 
-def main(config_path="configs/train.yaml"):
-    # Doc cau hinh
-    with open(config_path, "r") as f:
+def main():
+    args = parse_args()
+    
+    with open(args.config, 'r') as f:
         config = yaml.safe_load(f)
 
-    # 1. Load Model va Tokenizer
+    print("1. Initializing Model and Tokenizer via Unsloth...")
+    max_seq_length = config['model']['max_seq_length']
     model, tokenizer = FastLanguageModel.from_pretrained(
-        model_name=config['model']['name'],
-        max_seq_length=config['model']['max_seq_length'],
+        model_name=config['model']['base_model'],
+        max_seq_length=max_seq_length,
+        dtype=None,
         load_in_4bit=config['model']['load_in_4bit'],
     )
 
-    # 2. Cau hinh PEFT (LoRA)
+    print("2. Injecting LoRA Adapters...")
     model = FastLanguageModel.get_peft_model(
         model,
         r=config['lora']['r'],
+        target_modules=config['lora']['target_modules'],
         lora_alpha=config['lora']['lora_alpha'],
         lora_dropout=config['lora']['lora_dropout'],
-        target_modules=config['lora']['target_modules'],
         bias=config['lora']['bias'],
         use_gradient_checkpointing=config['lora']['use_gradient_checkpointing'],
-        random_state=config['lora']['random_state'],
+        random_state=config['training']['seed'],
+        use_rslora=False,
+        loftq_config=None,
     )
 
-    # 3. Thiet lap Chat Template cho Llama-3.1
-    tokenizer = get_chat_template(
-        tokenizer,
-        chat_template="llama-3.1",
-    )
+    print("3. Loading and Tokenizing Dataset...")
+    tokenizer = get_chat_template(tokenizer, chat_template="chatml")
 
-    def formatting_prompts_func(examples):
-        convos = examples["conversations"]
-        texts = [
-            tokenizer.apply_chat_template(convo, tokenize=False, add_generation_prompt=False)
-            for convo in convos
-        ]
+    train_df = pd.read_csv(config['data']['train_path'])
+    train_df['conversations'] = train_df['conversations'].apply(json.loads)
+    train_dataset = Dataset.from_pandas(train_df)
+
+    def format_prompts(examples):
+        texts = [tokenizer.apply_chat_template(convo, tokenize=False, add_generation_prompt=False) 
+                 for convo in examples["conversations"]]
         return {"text": texts}
 
-    # 4. Chuan bi du lieu
-    train_dataset = load_local_data(config['data']['train_path'])
-    val_dataset = load_local_data(config['data']['val_path'])
+    train_dataset = train_dataset.map(format_prompts, batched=True)
 
-    train_dataset = train_dataset.map(formatting_prompts_func, batched=True)
-    val_dataset = val_dataset.map(formatting_prompts_func, batched=True)
+    print("4. Configuring SFTTrainer...")
+    checkpoint_dir = os.path.join(args.output_dir, "checkpoints")
+    
+    training_args = TrainingArguments(
+        output_dir=checkpoint_dir,
+        per_device_train_batch_size=config['training']['per_device_train_batch_size'],
+        gradient_accumulation_steps=config['training']['gradient_accumulation_steps'],
+        warmup_ratio=config['training']['warmup_ratio'],
+        num_train_epochs=config['training']['num_train_epochs'],
+        learning_rate=config['training']['learning_rate'],
+        fp16=config['training']['fp16'],
+        bf16=config['training']['bf16'],
+        logging_steps=config['training']['logging_steps'],
+        optim=config['training']['optim'],
+        weight_decay=config['training']['weight_decay'],
+        lr_scheduler_type=config['training']['lr_scheduler_type'],
+        seed=config['training']['seed'],
+        save_strategy=config['training']['save_strategy'],
+        save_total_limit=config['training']['save_total_limit'],
+    )
 
-    # 5. Khoi tao Trainer
     trainer = SFTTrainer(
         model=model,
         tokenizer=tokenizer,
         train_dataset=train_dataset,
-        eval_dataset=val_dataset,
         dataset_text_field="text",
-        max_seq_length=config['model']['max_seq_length'],
-        data_collator=DataCollatorForSeq2Seq(tokenizer=tokenizer),
-        args=TrainingArguments(
-            output_dir=config['training']['output_dir'],
-            per_device_train_batch_size=config['training']['per_device_train_batch_size'],
-            gradient_accumulation_steps=config['training']['gradient_accumulation_steps'],
-            warmup_ratio=config['training']['warmup_ratio'],
-            num_train_epochs=config['training']['num_train_epochs'],
-            learning_rate=config['training']['learning_rate'],
-            fp16=config['training']['fp16'],
-            bf16=config['training']['bf16'],
-            logging_steps=config['training']['logging_steps'],
-            optim=config['training']['optim'],
-            weight_decay=config['training']['weight_decay'],
-            lr_scheduler_type=config['training']['lr_scheduler_type'],
-            seed=config['training']['seed'],
-            eval_strategy=config['training']['eval_strategy'],
-            save_strategy=config['training']['save_strategy'],
-            report_to="none",
-        ),
+        max_seq_length=max_seq_length,
+        dataset_num_proc=2,
+        packing=False,
+        args=training_args,
     )
 
-    # 6. Ap dung train_on_responses_only
-    # Trich xuat phan instruction va response dua tren template cua Llama-3.1
-    trainer = train_on_responses_only(
-        trainer,
-        instruction_part="<|start_header_id|>user<|end_header_id|>\n\n",
-        response_part="<|start_header_id|>assistant<|end_header_id|>\n\n",
-    )
+    print("5. Executing Training Phase...")
+    resume_from_checkpoint = False
+    if os.path.isdir(checkpoint_dir) and len(os.listdir(checkpoint_dir)) > 0:
+        resume_from_checkpoint = True
+        print(f"   -> Checkpoint detected at {checkpoint_dir}. Resuming training...")
 
-    # 7. Huan luyen
-    print("Bat dau qua trinh huan luyen...")
-    trainer.train()
+    trainer_stats = trainer.train(resume_from_checkpoint=resume_from_checkpoint)
 
-    # 8. Luu model adapter
-    model.save_pretrained(config['training']['output_dir'])
-    tokenizer.save_pretrained(config['training']['output_dir'])
-    print(f"Hoan tat huan luyen. Checkpoint da luu tai: {config['training']['output_dir']}")
+    print("6. Saving Final Artifacts...")
+    final_model_path = os.path.join(args.output_dir, "banking-intent-llama31-8b")
+    model.save_pretrained(final_model_path)
+    tokenizer.save_pretrained(final_model_path)
+    print(f"✅ Training Completed. Adapter securely persisted to: {final_model_path}")
 
 if __name__ == "__main__":
     main()

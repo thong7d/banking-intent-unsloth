@@ -1,0 +1,17 @@
+# .gitignore
+__pycache__/
+*.pyc
+
+# Virtual environments
+venv/
+env/
+
+# Data and Models (Keep on Google Drive, not GitHub)
+sample_data/
+outputs/
+figures/
+
+# IDE files
+.vscode/
+.idea/
+*.ipynb_checkpoints/

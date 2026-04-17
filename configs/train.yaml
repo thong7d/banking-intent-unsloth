@@ -1,26 +1,26 @@
+# configs/train.yaml
+
 model:
-  name: "unsloth/Llama-3.1-8B-Instruct-bnb-4bit"
+  base_model: "unsloth/Llama-3.1-8B-Instruct-bnb-4bit"
   max_seq_length: 512
   load_in_4bit: true
 
 lora:
-  r: 32
-  lora_alpha: 64
-  lora_dropout: 0 # Đưa về 0 để Unsloth kích hoạt tính năng vá lỗi tối đa (2x speed)
+  r: 16
+  lora_alpha: 32
+  lora_dropout: 0
   target_modules:
-    - q_proj
-    - k_proj
-    - v_proj
-    - o_proj
-    - gate_proj
-    - up_proj
-    - down_proj
+    - "q_proj"
+    - "k_proj"
+    - "v_proj"
+    - "o_proj"
+    - "gate_proj"
+    - "up_proj"
+    - "down_proj"
   bias: "none"
   use_gradient_checkpointing: "unsloth"
-  random_state: 3407
 
 training:
-  output_dir: "outputs/banking-intent-llama31-8b"
   num_train_epochs: 3
   per_device_train_batch_size: 2
   gradient_accumulation_steps: 4
@@ -28,13 +28,14 @@ training:
   lr_scheduler_type: "cosine"
   warmup_ratio: 0.1
   weight_decay: 0.01
-  logging_steps: 1
+  logging_steps: 10
   save_strategy: "epoch"
   eval_strategy: "epoch"
+  save_total_limit: 2
   fp16: true
   bf16: false
   optim: "adamw_8bit"
-  seed: 3407
+  seed: 42
 
 data:
   train_path: "sample_data/train.csv"

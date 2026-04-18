@@ -6,6 +6,6 @@ matplotlib==3.8.2
 seaborn==0.13.2
 unsloth[colab-new] @ git+https://github.com/unslothai/unsloth.git
 trl>=0.18.2
-peft==0.8.2
+peft>=0.18.0
 accelerate>=0.34.1
 bitsandbytes>=0.45.5,!=0.46.0,!=0.48.0

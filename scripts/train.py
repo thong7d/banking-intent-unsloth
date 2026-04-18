@@ -14,6 +14,7 @@ def parse_args():
     parser = argparse.ArgumentParser(description="Training Pipeline for Llama-3.1")
     parser.add_argument("--config", type=str, required=True)
     parser.add_argument("--output_dir", type=str, required=True)
+    parser.add_argument("--data_dir", type=str, required=True)
     return parser.parse_args()
 
 def main():
@@ -48,7 +49,8 @@ def main():
     print("3. Loading and Tokenizing Dataset...")
     tokenizer = get_chat_template(tokenizer, chat_template="chatml")
 
-    train_df = pd.read_csv(config['data']['train_path'])
+    train_path = os.path.join(args.data_dir, "train.csv")
+    train_df = pd.read_csv(train_path)
     train_df['conversations'] = train_df['conversations'].apply(json.loads)
     train_dataset = Dataset.from_pandas(train_df)
 

@@ -1,0 +1,8 @@
+  model:
+  checkpoint_path: "outputs/banking-intent-llama31-8b"
+  max_seq_length: 512
+  load_in_4bit: true
+
+inference:
+  system_prompt: "You are a banking customer service intent classifier. Given a customer message, classify it into exactly one of the 77 banking intent categories. Respond with ONLY the intent label name, nothing else."
+  data_dir: "sample_data"

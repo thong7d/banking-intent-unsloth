@@ -54,6 +54,9 @@ def main():
                         "--model_path", ft_model_path, 
                         "--data_dir", data_dir, 
                         "--output_dir", figures_dir])
+    elif args.step in ["infer", "all"]:
+        print("Executing Standalone Inference...")
+        subprocess.run(["python", "scripts/inference.py", "--config", "configs/inference.yaml"])
 
 if __name__ == "__main__":
     main()

@@ -3,7 +3,7 @@ import subprocess
 import os
 
 def parse_args():
-    parser = argparse.ArgumentParser(description="Banking Intent Pipeline Orchestrator")
+    parser = argparse.ArgumentParser(description="Banking Intent Pipeline")
     parser.add_argument("--step", choices=["eda", "preprocess", "train", "evaluate", "infer", "all"], required=True)
     parser.add_argument("--env", choices=["local", "colab"], default="local")
     return parser.parse_args()
@@ -11,7 +11,7 @@ def parse_args():
 def main():
     args = parse_args()
 
-    # Định tuyến đường dẫn động
+    # Dynamic path routing
     if args.env == "colab":
         base_storage_dir = "/content/drive/MyDrive/banking-intent-unsloth"
     else:
@@ -40,7 +40,7 @@ def main():
 
     elif args.step in ["infer", "all"]:
         print("Executing Standalone Inference...")
-        # Truyền đường dẫn Google Drive tuyệt đối xuống cho script
+        # Pass the absolute Google Drive path down to the script
         checkpoint_dir = os.path.join(output_dir, "banking-intent-llama31-8b")
         subprocess.run(["python", "scripts/inference.py", 
                         "--config", "configs/inference.yaml", 

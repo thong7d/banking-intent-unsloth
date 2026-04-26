@@ -9,7 +9,6 @@ env/
 # Data and Models (Keep on Google Drive, not GitHub)
 sample_data/
 outputs/
-figures/
 
 # IDE files
 .vscode/

@@ -61,6 +61,13 @@ def main():
 
     train_dataset = train_dataset.map(format_prompts, batched=True)
 
+    print("3.5 Loading Validation Dataset...")
+    val_path = os.path.join(args.data_dir, "val.csv")
+    val_df = pd.read_csv(val_path)
+    val_df['conversations'] = val_df['conversations'].apply(json.loads)
+    val_dataset = Dataset.from_pandas(val_df)
+    val_dataset = val_dataset.map(format_prompts, batched=True)
+
     print("4. Configuring SFTTrainer...")
     checkpoint_dir = os.path.join(args.output_dir, "checkpoints")
     
@@ -86,6 +93,7 @@ def main():
         model=model,
         tokenizer=tokenizer,
         train_dataset=train_dataset,
+        eval_dataset=val_dataset,
         dataset_text_field="text",
         max_seq_length=max_seq_length,
         dataset_num_proc=2,
